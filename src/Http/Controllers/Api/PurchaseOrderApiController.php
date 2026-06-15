@@ -3,137 +3,121 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
+use Dev3bdulrahman\Purchases\Events\PurchaseOrderApproved;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\StorePurchaseOrderApiRequest;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\UpdatePurchaseOrderApiRequest;
 use Dev3bdulrahman\Purchases\Http\Resources\PurchaseOrderResource;
 use Dev3bdulrahman\Purchases\Services\PurchaseOrderService;
 use Dev3bdulrahman\Purchases\Models\PurchaseOrder;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PurchaseOrderApiController extends Controller
 {
-    protected PurchaseOrderService $service;
+    use HasApiResponse;
 
-    public function __construct(PurchaseOrderService $service)
+    /**
+     * List all purchase orders.
+     */
+    public function index(Request $request, PurchaseOrderService $service): JsonResponse
     {
-        $this->service = $service;
-    }
+        $this->authorize('viewAny', PurchaseOrder::class);
 
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = (int)$request->get('per_page', 10);
-        $orders = $this->service->listOrders($request->all(), $perPage);
+        $perPage = (int) $request->get('per_page', 10);
+        $orders = $service->listOrders($request->all(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase orders retrieved successfully'),
-            'data' => PurchaseOrderResource::collection($orders->items()),
-            'meta' => [
+        return $this->success(
+            PurchaseOrderResource::collection($orders->items()),
+            __('Purchase orders retrieved successfully'),
+            200,
+            [
                 'current_page' => $orders->currentPage(),
                 'last_page' => $orders->lastPage(),
                 'per_page' => $orders->perPage(),
                 'total' => $orders->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a new purchase order.
+     */
+    public function store(StorePurchaseOrderApiRequest $request, PurchaseOrderService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier_id' => 'required|exists:purchases_suppliers,id',
-            'purchase_request_id' => 'nullable|exists:purchases_requests,id',
-            'order_number' => 'required|string|max:255',
-            'order_date' => 'required|date',
-            'delivery_date' => 'nullable|date',
-            'status' => 'nullable|string|in:draft,pending,confirmed,received,cancelled',
-            'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-            'items.*.discount_amount' => 'nullable|numeric|min:0',
-        ]);
+        $this->authorize('create', PurchaseOrder::class);
 
+        $validated = $request->validated();
         $items = $validated['items'];
         unset($validated['items']);
 
         $validated['company_id'] = session('active_company_id') ?: auth()->user()->company_id;
-        $order = $this->service->createOrder($validated, $items);
+        $order = $service->createOrder($validated, $items);
         $order->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase order created successfully'),
-            'data' => new PurchaseOrderResource($order),
-            'errors' => []
-        ], 201);
+        return $this->success(
+            new PurchaseOrderResource($order),
+            __('Purchase order created successfully'),
+            201
+        );
     }
 
-    public function show($id): JsonResponse
+    /**
+     * Show a single purchase order.
+     */
+    public function show(PurchaseOrder $purchaseOrder): JsonResponse
     {
-        $order = PurchaseOrder::with('items')->findOrFail($id);
+        $this->authorize('view', $purchaseOrder);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase order retrieved successfully'),
-            'data' => new PurchaseOrderResource($order),
-            'errors' => []
-        ]);
+        $purchaseOrder->load('items');
+
+        return $this->success(
+            new PurchaseOrderResource($purchaseOrder),
+            __('Purchase order retrieved successfully')
+        );
     }
 
-    public function update(Request $request, $id): JsonResponse
+    /**
+     * Update an existing purchase order.
+     */
+    public function update(UpdatePurchaseOrderApiRequest $request, PurchaseOrder $purchaseOrder, PurchaseOrderService $service): JsonResponse
     {
-        $order = PurchaseOrder::findOrFail($id);
+        $this->authorize('update', $purchaseOrder);
 
-        $validated = $request->validate([
-            'supplier_id' => 'sometimes|required|exists:purchases_suppliers,id',
-            'purchase_request_id' => 'nullable|exists:purchases_requests,id',
-            'order_number' => 'sometimes|required|string|max:255',
-            'order_date' => 'sometimes|required|date',
-            'delivery_date' => 'nullable|date',
-            'status' => 'nullable|string|in:draft,pending,confirmed,received,cancelled',
-            'notes' => 'nullable|string',
-            'items' => 'sometimes|required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-            'items.*.discount_amount' => 'nullable|numeric|min:0',
-        ]);
-
+        $validated = $request->validated();
         $items = $validated['items'] ?? [];
         unset($validated['items']);
 
-        $this->service->updateOrder($order, $validated, $items);
-        $order->load('items');
+        $service->updateOrder($purchaseOrder, $validated, $items);
+        $purchaseOrder->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase order updated successfully'),
-            'data' => new PurchaseOrderResource($order),
-            'errors' => []
-        ]);
+        return $this->success(
+            new PurchaseOrderResource($purchaseOrder),
+            __('Purchase order updated successfully')
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Delete a purchase order.
+     */
+    public function destroy(PurchaseOrder $purchaseOrder, PurchaseOrderService $service): JsonResponse
     {
-        $order = PurchaseOrder::findOrFail($id);
-        $this->service->deleteOrder($order);
+        $this->authorize('delete', $purchaseOrder);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase order deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        $service->deleteOrder($purchaseOrder);
+
+        return $this->success(
+            null,
+            __('Purchase order deleted successfully')
+        );
     }
 
-    public function convertToInvoice($id, Request $request): JsonResponse
+    /**
+     * Convert Purchase Order to Invoice.
+     */
+    public function convertToInvoice(PurchaseOrder $purchaseOrder, Request $request, PurchaseOrderService $service): JsonResponse
     {
-        $order = PurchaseOrder::findOrFail($id);
+        $this->authorize('create', \Dev3bdulrahman\Purchases\Models\SupplierInvoice::class);
 
         $validated = $request->validate([
             'invoice_number' => 'required|string|max:255',
@@ -142,16 +126,14 @@ class PurchaseOrderApiController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $invoice = $this->service->convertToInvoice($order, $validated);
+        $invoice = $service->convertToInvoice($purchaseOrder, $validated);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase order converted to Invoice successfully'),
-            'data' => [
+        return $this->success(
+            [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
             ],
-            'errors' => []
-        ]);
+            __('Purchase order converted to Invoice successfully')
+        );
     }
 }

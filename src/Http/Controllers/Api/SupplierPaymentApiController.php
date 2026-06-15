@@ -3,71 +3,82 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
+use Dev3bdulrahman\Purchases\Events\SupplierPaymentMade;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\StoreSupplierPaymentApiRequest;
 use Dev3bdulrahman\Purchases\Http\Resources\SupplierPaymentResource;
 use Dev3bdulrahman\Purchases\Services\SupplierInvoiceService;
 use Dev3bdulrahman\Purchases\Models\SupplierInvoice;
 use Dev3bdulrahman\Purchases\Models\SupplierPayment;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SupplierPaymentApiController extends Controller
 {
+    use HasApiResponse;
+
+    /**
+     * List all supplier payments.
+     */
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', SupplierPayment::class);
+
         $query = SupplierPayment::query()->with('invoice');
 
         if ($request->has('supplier_invoice_id')) {
             $query->where('supplier_invoice_id', $request->supplier_invoice_id);
         }
 
-        $perPage = (int)$request->get('per_page', 10);
+        $perPage = (int) $request->get('per_page', 10);
         $payments = $query->paginate($perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier payments retrieved successfully'),
-            'data' => SupplierPaymentResource::collection($payments->items()),
-            'meta' => [
+        return $this->success(
+            SupplierPaymentResource::collection($payments->items()),
+            __('Supplier payments retrieved successfully'),
+            200,
+            [
                 'current_page' => $payments->currentPage(),
                 'last_page' => $payments->lastPage(),
                 'per_page' => $payments->perPage(),
                 'total' => $payments->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request, SupplierInvoiceService $service): JsonResponse
+    /**
+     * Record a new supplier payment.
+     */
+    public function store(StoreSupplierPaymentApiRequest $request, SupplierInvoiceService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier_invoice_id' => 'required|exists:purchases_invoices,id',
-            'payment_number' => 'required|string|max:255',
-            'payment_date' => 'required|date',
-            'payment_method' => 'required|string|in:cash,bank_transfer,card,check,online',
-            'amount' => 'required|numeric|min:0.0001',
-            'reference_number' => 'nullable|string|max:255',
-            'notes' => 'nullable|string',
-        ]);
+        $this->authorize('create', SupplierPayment::class);
 
+        $validated = $request->validated();
         $invoice = SupplierInvoice::findOrFail($validated['supplier_invoice_id']);
 
         $payment = $service->recordPayment($invoice, $validated);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier payment recorded successfully'),
-            'data' => new SupplierPaymentResource($payment),
-            'errors' => []
-        ], 201);
+        SupplierPaymentMade::dispatch($payment, $invoice, auth()->id(), auth()->user()->company_id);
+
+        return $this->success(
+            new SupplierPaymentResource($payment),
+            __('Supplier payment recorded successfully'),
+            201
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Delete a supplier payment.
+     */
+    public function destroy(SupplierPayment $supplierPayment): JsonResponse
     {
-        $payment = SupplierPayment::findOrFail($id);
+        $this->authorize('delete', $supplierPayment);
 
-        $invoice = $payment->invoice;
+        $invoice = $supplierPayment->invoice;
+        $supplierPayment->delete();
+
         if ($invoice) {
-            $newPaidAmount = max(0, $invoice->paid_amount - $payment->amount);
+            $newPaidAmount = $invoice->payments()->sum('amount');
             $status = 'unpaid';
             if ($newPaidAmount >= $invoice->grand_total) {
                 $status = 'paid';
@@ -80,13 +91,9 @@ class SupplierPaymentApiController extends Controller
             ]);
         }
 
-        $payment->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier payment deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        return $this->success(
+            null,
+            __('Supplier payment deleted successfully')
+        );
     }
 }

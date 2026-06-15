@@ -8,45 +8,46 @@ use Dev3bdulrahman\Purchases\Http\Controllers\Api\SupplierInvoiceApiController;
 use Dev3bdulrahman\Purchases\Http\Controllers\Api\SupplierPaymentApiController;
 use Dev3bdulrahman\Purchases\Http\Controllers\Api\PurchaseReturnApiController;
 
-Route::prefix('api/v1/purchases')->middleware(['api', 'auth'])->group(function () {
+Route::prefix('api/v1/purchases')->middleware(['auth:sanctum', 'throttle:60,1', 'api.tenant'])->group(function () {
     // Suppliers
-    Route::get('suppliers', [SupplierApiController::class, 'index'])->middleware('can:purchases.suppliers.view');
-    Route::post('suppliers', [SupplierApiController::class, 'store'])->middleware('can:purchases.suppliers.create');
-    Route::get('suppliers/{id}', [SupplierApiController::class, 'show'])->middleware('can:purchases.suppliers.view');
-    Route::put('suppliers/{id}', [SupplierApiController::class, 'update'])->middleware('can:purchases.suppliers.edit');
-    Route::delete('suppliers/{id}', [SupplierApiController::class, 'destroy'])->middleware('can:purchases.suppliers.delete');
+    Route::get('suppliers', [SupplierApiController::class, 'index'])->name('api.v1.purchases.suppliers.index');
+    Route::post('suppliers', [SupplierApiController::class, 'store'])->name('api.v1.purchases.suppliers.store');
+    Route::get('suppliers/{supplier}', [SupplierApiController::class, 'show'])->name('api.v1.purchases.suppliers.show');
+    Route::put('suppliers/{supplier}', [SupplierApiController::class, 'update'])->name('api.v1.purchases.suppliers.update');
+    Route::delete('suppliers/{supplier}', [SupplierApiController::class, 'destroy'])->name('api.v1.purchases.suppliers.destroy');
 
     // Purchase Requests
-    Route::get('requests', [PurchaseRequestApiController::class, 'index'])->middleware('can:purchases.requests.view');
-    Route::post('requests', [PurchaseRequestApiController::class, 'store'])->middleware('can:purchases.requests.create');
-    Route::get('requests/{id}', [PurchaseRequestApiController::class, 'show'])->middleware('can:purchases.requests.view');
-    Route::put('requests/{id}', [PurchaseRequestApiController::class, 'update'])->middleware('can:purchases.requests.edit');
-    Route::delete('requests/{id}', [PurchaseRequestApiController::class, 'destroy'])->middleware('can:purchases.requests.delete');
-    Route::post('requests/{id}/convert', [PurchaseRequestApiController::class, 'convertToOrder'])->middleware('can:purchases.orders.create');
+    Route::get('requests', [PurchaseRequestApiController::class, 'index'])->name('api.v1.purchases.requests.index');
+    Route::post('requests', [PurchaseRequestApiController::class, 'store'])->name('api.v1.purchases.requests.store');
+    Route::get('requests/{purchaseRequest}', [PurchaseRequestApiController::class, 'show'])->name('api.v1.purchases.requests.show');
+    Route::put('requests/{purchaseRequest}', [PurchaseRequestApiController::class, 'update'])->name('api.v1.purchases.requests.update');
+    Route::delete('requests/{purchaseRequest}', [PurchaseRequestApiController::class, 'destroy'])->name('api.v1.purchases.requests.destroy');
+    Route::post('requests/{purchaseRequest}/convert', [PurchaseRequestApiController::class, 'convertToOrder'])->name('api.v1.purchases.requests.convert');
 
     // Purchase Orders
-    Route::get('orders', [PurchaseOrderApiController::class, 'index'])->middleware('can:purchases.orders.view');
-    Route::post('orders', [PurchaseOrderApiController::class, 'store'])->middleware('can:purchases.orders.create');
-    Route::get('orders/{id}', [PurchaseOrderApiController::class, 'show'])->middleware('can:purchases.orders.view');
-    Route::put('orders/{id}', [PurchaseOrderApiController::class, 'update'])->middleware('can:purchases.orders.edit');
-    Route::delete('orders/{id}', [PurchaseOrderApiController::class, 'destroy'])->middleware('can:purchases.orders.delete');
-    Route::post('orders/{id}/convert-to-invoice', [PurchaseOrderApiController::class, 'convertToInvoice'])->middleware('can:purchases.invoices.create');
+    Route::get('orders', [PurchaseOrderApiController::class, 'index'])->name('api.v1.purchases.orders.index');
+    Route::post('orders', [PurchaseOrderApiController::class, 'store'])->name('api.v1.purchases.orders.store');
+    Route::get('orders/{purchaseOrder}', [PurchaseOrderApiController::class, 'show'])->name('api.v1.purchases.orders.show');
+    Route::put('orders/{purchaseOrder}', [PurchaseOrderApiController::class, 'update'])->name('api.v1.purchases.orders.update');
+    Route::delete('orders/{purchaseOrder}', [PurchaseOrderApiController::class, 'destroy'])->name('api.v1.purchases.orders.destroy');
+    Route::post('orders/{purchaseOrder}/convert-to-invoice', [PurchaseOrderApiController::class, 'convertToInvoice'])->name('api.v1.purchases.orders.convert-to-invoice');
 
     // Supplier Invoices
-    Route::get('invoices', [SupplierInvoiceApiController::class, 'index'])->middleware('can:purchases.invoices.view');
-    Route::post('invoices', [SupplierInvoiceApiController::class, 'store'])->middleware('can:purchases.invoices.create');
-    Route::get('invoices/{id}', [SupplierInvoiceApiController::class, 'show'])->middleware('can:purchases.invoices.view');
-    Route::put('invoices/{id}', [SupplierInvoiceApiController::class, 'update'])->middleware('can:purchases.invoices.edit');
-    Route::delete('invoices/{id}', [SupplierInvoiceApiController::class, 'destroy'])->middleware('can:purchases.invoices.delete');
+    Route::get('invoices', [SupplierInvoiceApiController::class, 'index'])->name('api.v1.purchases.invoices.index');
+    Route::post('invoices', [SupplierInvoiceApiController::class, 'store'])->name('api.v1.purchases.invoices.store');
+    Route::get('invoices/{supplierInvoice}', [SupplierInvoiceApiController::class, 'show'])->name('api.v1.purchases.invoices.show');
+    Route::put('invoices/{supplierInvoice}', [SupplierInvoiceApiController::class, 'update'])->name('api.v1.purchases.invoices.update');
+    Route::delete('invoices/{supplierInvoice}', [SupplierInvoiceApiController::class, 'destroy'])->name('api.v1.purchases.invoices.destroy');
 
     // Supplier Payments
-    Route::get('payments', [SupplierPaymentApiController::class, 'index'])->middleware('can:purchases.payments.view');
-    Route::post('payments', [SupplierPaymentApiController::class, 'store'])->middleware('can:purchases.payments.create');
-    Route::delete('payments/{id}', [SupplierPaymentApiController::class, 'destroy'])->middleware('can:purchases.payments.delete');
+    Route::get('payments', [SupplierPaymentApiController::class, 'index'])->name('api.v1.purchases.payments.index');
+    Route::post('payments', [SupplierPaymentApiController::class, 'store'])->name('api.v1.purchases.payments.store');
+    Route::delete('payments/{supplierPayment}', [SupplierPaymentApiController::class, 'destroy'])->name('api.v1.purchases.payments.destroy');
 
     // Purchase Returns
-    Route::get('returns', [PurchaseReturnApiController::class, 'index'])->middleware('can:purchases.returns.view');
-    Route::post('returns', [PurchaseReturnApiController::class, 'store'])->middleware('can:purchases.returns.create');
-    Route::get('returns/{id}', [PurchaseReturnApiController::class, 'show'])->middleware('can:purchases.returns.view');
-    Route::delete('returns/{id}', [PurchaseReturnApiController::class, 'destroy'])->middleware('can:purchases.returns.delete');
+    Route::get('returns', [PurchaseReturnApiController::class, 'index'])->name('api.v1.purchases.returns.index');
+    Route::post('returns', [PurchaseReturnApiController::class, 'store'])->name('api.v1.purchases.returns.store');
+    Route::get('returns/{purchaseReturn}', [PurchaseReturnApiController::class, 'show'])->name('api.v1.purchases.returns.show');
+    Route::put('returns/{purchaseReturn}', [PurchaseReturnApiController::class, 'update'])->name('api.v1.purchases.returns.update');
+    Route::delete('returns/{purchaseReturn}', [PurchaseReturnApiController::class, 'destroy'])->name('api.v1.purchases.returns.destroy');
 });

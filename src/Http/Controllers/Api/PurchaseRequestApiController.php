@@ -3,42 +3,48 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
 use Dev3bdulrahman\Purchases\Http\Resources\PurchaseRequestResource;
+use Dev3bdulrahman\Purchases\Models\PurchaseOrder;
 use Dev3bdulrahman\Purchases\Services\PurchaseRequestService;
 use Dev3bdulrahman\Purchases\Models\PurchaseRequest;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PurchaseRequestApiController extends Controller
 {
-    protected PurchaseRequestService $service;
+    use HasApiResponse;
 
-    public function __construct(PurchaseRequestService $service)
+    /**
+     * List all purchase requests.
+     */
+    public function index(Request $request, PurchaseRequestService $service): JsonResponse
     {
-        $this->service = $service;
-    }
+        $this->authorize('viewAny', PurchaseRequest::class);
 
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = (int)$request->get('per_page', 10);
-        $requests = $this->service->listRequests($request->all(), $perPage);
+        $perPage = (int) $request->get('per_page', 10);
+        $requests = $service->listRequests($request->all(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase requests retrieved successfully'),
-            'data' => PurchaseRequestResource::collection($requests->items()),
-            'meta' => [
+        return $this->success(
+            PurchaseRequestResource::collection($requests->items()),
+            __('Purchase requests retrieved successfully'),
+            200,
+            [
                 'current_page' => $requests->currentPage(),
                 'last_page' => $requests->lastPage(),
                 'per_page' => $requests->perPage(),
                 'total' => $requests->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a new purchase request.
+     */
+    public function store(Request $request, PurchaseRequestService $service): JsonResponse
     {
+        $this->authorize('create', PurchaseRequest::class);
+
         $validated = $request->validate([
             'request_number' => 'required|string|max:255',
             'request_date' => 'required|date',
@@ -55,32 +61,37 @@ class PurchaseRequestApiController extends Controller
         unset($validated['items']);
 
         $validated['company_id'] = session('active_company_id') ?: auth()->user()->company_id;
-        $purchaseRequest = $this->service->createRequest($validated, $items);
+        $purchaseRequest = $service->createRequest($validated, $items);
         $purchaseRequest->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase request created successfully'),
-            'data' => new PurchaseRequestResource($purchaseRequest),
-            'errors' => []
-        ], 201);
+        return $this->success(
+            new PurchaseRequestResource($purchaseRequest),
+            __('Purchase request created successfully'),
+            201
+        );
     }
 
-    public function show($id): JsonResponse
+    /**
+     * Show a single purchase request.
+     */
+    public function show(PurchaseRequest $purchaseRequest): JsonResponse
     {
-        $purchaseRequest = PurchaseRequest::with('items')->findOrFail($id);
+        $this->authorize('view', $purchaseRequest);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase request retrieved successfully'),
-            'data' => new PurchaseRequestResource($purchaseRequest),
-            'errors' => []
-        ]);
+        $purchaseRequest->load('items');
+
+        return $this->success(
+            new PurchaseRequestResource($purchaseRequest),
+            __('Purchase request retrieved successfully')
+        );
     }
 
-    public function update(Request $request, $id): JsonResponse
+    /**
+     * Update an existing purchase request.
+     */
+    public function update(Request $request, PurchaseRequest $purchaseRequest, PurchaseRequestService $service): JsonResponse
     {
-        $purchaseRequest = PurchaseRequest::findOrFail($id);
+        $this->authorize('update', $purchaseRequest);
 
         $validated = $request->validate([
             'request_number' => 'sometimes|required|string|max:255',
@@ -97,33 +108,36 @@ class PurchaseRequestApiController extends Controller
         $items = $validated['items'] ?? [];
         unset($validated['items']);
 
-        $this->service->updateRequest($purchaseRequest, $validated, $items);
+        $service->updateRequest($purchaseRequest, $validated, $items);
         $purchaseRequest->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase request updated successfully'),
-            'data' => new PurchaseRequestResource($purchaseRequest),
-            'errors' => []
-        ]);
+        return $this->success(
+            new PurchaseRequestResource($purchaseRequest),
+            __('Purchase request updated successfully')
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Delete a purchase request.
+     */
+    public function destroy(PurchaseRequest $purchaseRequest, PurchaseRequestService $service): JsonResponse
     {
-        $purchaseRequest = PurchaseRequest::findOrFail($id);
-        $this->service->deleteRequest($purchaseRequest);
+        $this->authorize('delete', $purchaseRequest);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase request deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        $service->deleteRequest($purchaseRequest);
+
+        return $this->success(
+            null,
+            __('Purchase request deleted successfully')
+        );
     }
 
-    public function convertToOrder($id, Request $request): JsonResponse
+    /**
+     * Convert Purchase Request to Order.
+     */
+    public function convertToOrder(PurchaseRequest $purchaseRequest, Request $request, PurchaseRequestService $service): JsonResponse
     {
-        $purchaseRequest = PurchaseRequest::findOrFail($id);
+        $this->authorize('create', PurchaseOrder::class);
 
         $validated = $request->validate([
             'order_number' => 'required|string|max:255',
@@ -134,16 +148,14 @@ class PurchaseRequestApiController extends Controller
             'tax_rate' => 'nullable|numeric|min:0|max:100',
         ]);
 
-        $order = $this->service->convertToOrder($purchaseRequest, $validated);
+        $order = $service->convertToOrder($purchaseRequest, $validated);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase request converted to Purchase Order successfully'),
-            'data' => [
+        return $this->success(
+            [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
             ],
-            'errors' => []
-        ]);
+            __('Purchase request converted to Purchase Order successfully')
+        );
     }
 }

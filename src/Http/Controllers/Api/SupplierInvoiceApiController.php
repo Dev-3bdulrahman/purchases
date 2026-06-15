@@ -3,131 +3,114 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
+use Dev3bdulrahman\Purchases\Events\SupplierInvoiceReceived;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\StoreSupplierInvoiceApiRequest;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\UpdateSupplierInvoiceApiRequest;
 use Dev3bdulrahman\Purchases\Http\Resources\SupplierInvoiceResource;
 use Dev3bdulrahman\Purchases\Services\SupplierInvoiceService;
 use Dev3bdulrahman\Purchases\Models\SupplierInvoice;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SupplierInvoiceApiController extends Controller
 {
-    protected SupplierInvoiceService $service;
+    use HasApiResponse;
 
-    public function __construct(SupplierInvoiceService $service)
+    /**
+     * List all supplier invoices.
+     */
+    public function index(Request $request, SupplierInvoiceService $service): JsonResponse
     {
-        $this->service = $service;
-    }
+        $this->authorize('viewAny', SupplierInvoice::class);
 
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = (int)$request->get('per_page', 10);
-        $invoices = $this->service->listInvoices($request->all(), $perPage);
+        $perPage = (int) $request->get('per_page', 10);
+        $invoices = $service->listInvoices($request->all(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier invoices retrieved successfully'),
-            'data' => SupplierInvoiceResource::collection($invoices->items()),
-            'meta' => [
+        return $this->success(
+            SupplierInvoiceResource::collection($invoices->items()),
+            __('Supplier invoices retrieved successfully'),
+            200,
+            [
                 'current_page' => $invoices->currentPage(),
                 'last_page' => $invoices->lastPage(),
                 'per_page' => $invoices->perPage(),
                 'total' => $invoices->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a new supplier invoice.
+     */
+    public function store(StoreSupplierInvoiceApiRequest $request, SupplierInvoiceService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier_id' => 'required|exists:purchases_suppliers,id',
-            'purchase_order_id' => 'nullable|exists:purchases_orders,id',
-            'invoice_number' => 'required|string|max:255',
-            'invoice_date' => 'required|date',
-            'due_date' => 'required|date',
-            'status' => 'nullable|string|in:draft,unpaid,partially_paid,paid,overdue,cancelled',
-            'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-            'items.*.discount_amount' => 'nullable|numeric|min:0',
-        ]);
+        $this->authorize('create', SupplierInvoice::class);
 
+        $validated = $request->validated();
         $items = $validated['items'];
         unset($validated['items']);
 
         $validated['company_id'] = session('active_company_id') ?: auth()->user()->company_id;
-        $invoice = $this->service->createInvoice($validated, $items);
+        $invoice = $service->createInvoice($validated, $items);
         $invoice->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier invoice created successfully'),
-            'data' => new SupplierInvoiceResource($invoice),
-            'errors' => []
-        ], 201);
+        SupplierInvoiceReceived::dispatch($invoice, auth()->id(), auth()->user()->company_id);
+
+        return $this->success(
+            new SupplierInvoiceResource($invoice),
+            __('Supplier invoice created successfully'),
+            201
+        );
     }
 
-    public function show($id): JsonResponse
+    /**
+     * Show a single supplier invoice.
+     */
+    public function show(SupplierInvoice $supplierInvoice): JsonResponse
     {
-        $invoice = SupplierInvoice::with('items')->findOrFail($id);
+        $this->authorize('view', $supplierInvoice);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier invoice retrieved successfully'),
-            'data' => new SupplierInvoiceResource($invoice),
-            'errors' => []
-        ]);
+        $supplierInvoice->load('items');
+
+        return $this->success(
+            new SupplierInvoiceResource($supplierInvoice),
+            __('Supplier invoice retrieved successfully')
+        );
     }
 
-    public function update(Request $request, $id): JsonResponse
+    /**
+     * Update an existing supplier invoice.
+     */
+    public function update(UpdateSupplierInvoiceApiRequest $request, SupplierInvoice $supplierInvoice, SupplierInvoiceService $service): JsonResponse
     {
-        $invoice = SupplierInvoice::findOrFail($id);
+        $this->authorize('update', $supplierInvoice);
 
-        $validated = $request->validate([
-            'supplier_id' => 'sometimes|required|exists:purchases_suppliers,id',
-            'purchase_order_id' => 'nullable|exists:purchases_orders,id',
-            'invoice_number' => 'sometimes|required|string|max:255',
-            'invoice_date' => 'sometimes|required|date',
-            'due_date' => 'sometimes|required|date',
-            'status' => 'nullable|string|in:draft,unpaid,partially_paid,paid,overdue,cancelled',
-            'notes' => 'nullable|string',
-            'items' => 'sometimes|required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-            'items.*.discount_amount' => 'nullable|numeric|min:0',
-        ]);
-
+        $validated = $request->validated();
         $items = $validated['items'] ?? [];
         unset($validated['items']);
 
-        $this->service->updateInvoice($invoice, $validated, $items);
-        $invoice->load('items');
+        $service->updateInvoice($supplierInvoice, $validated, $items);
+        $supplierInvoice->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier invoice updated successfully'),
-            'data' => new SupplierInvoiceResource($invoice),
-            'errors' => []
-        ]);
+        return $this->success(
+            new SupplierInvoiceResource($supplierInvoice),
+            __('Supplier invoice updated successfully')
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Delete a supplier invoice.
+     */
+    public function destroy(SupplierInvoice $supplierInvoice, SupplierInvoiceService $service): JsonResponse
     {
-        $invoice = SupplierInvoice::findOrFail($id);
-        $this->service->deleteInvoice($invoice);
+        $this->authorize('delete', $supplierInvoice);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier invoice deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        $service->deleteInvoice($supplierInvoice);
+
+        return $this->success(
+            null,
+            __('Supplier invoice deleted successfully')
+        );
     }
 }

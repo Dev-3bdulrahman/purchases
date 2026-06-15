@@ -3,107 +3,102 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\StoreSupplierApiRequest;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\UpdateSupplierApiRequest;
 use Dev3bdulrahman\Purchases\Http\Resources\SupplierResource;
 use Dev3bdulrahman\Purchases\Services\SupplierService;
 use Dev3bdulrahman\Purchases\Models\Supplier;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SupplierApiController extends Controller
 {
-    protected SupplierService $service;
+    use HasApiResponse;
 
-    public function __construct(SupplierService $service)
+    /**
+     * List all suppliers.
+     */
+    public function index(Request $request, SupplierService $service): JsonResponse
     {
-        $this->service = $service;
-    }
+        $this->authorize('viewAny', Supplier::class);
 
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = (int)$request->get('per_page', 10);
-        $suppliers = $this->service->listSuppliers($request->all(), $perPage);
+        $perPage = (int) $request->get('per_page', 10);
+        $suppliers = $service->listSuppliers($request->all(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Suppliers retrieved successfully'),
-            'data' => SupplierResource::collection($suppliers->items()),
-            'meta' => [
+        return $this->success(
+            SupplierResource::collection($suppliers->items()),
+            __('Suppliers retrieved successfully'),
+            200,
+            [
                 'current_page' => $suppliers->currentPage(),
                 'last_page' => $suppliers->lastPage(),
                 'per_page' => $suppliers->perPage(),
                 'total' => $suppliers->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a new supplier.
+     */
+    public function store(StoreSupplierApiRequest $request, SupplierService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:50',
-            'address' => 'nullable|string',
-            'tax_number' => 'nullable|string|max:50',
-            'status' => 'nullable|string|in:active,inactive',
-        ]);
+        $this->authorize('create', Supplier::class);
 
+        $validated = $request->validated();
         $validated['company_id'] = session('active_company_id') ?: auth()->user()->company_id;
-        $supplier = $this->service->createSupplier($validated);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier created successfully'),
-            'data' => new SupplierResource($supplier),
-            'errors' => []
-        ], 201);
+        $supplier = $service->createSupplier($validated);
+
+        return $this->success(
+            new SupplierResource($supplier),
+            __('Supplier created successfully'),
+            201
+        );
     }
 
-    public function show($id): JsonResponse
+    /**
+     * Show a single supplier.
+     */
+    public function show(Supplier $supplier): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $this->authorize('view', $supplier);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier retrieved successfully'),
-            'data' => new SupplierResource($supplier),
-            'errors' => []
-        ]);
+        return $this->success(
+            new SupplierResource($supplier),
+            __('Supplier retrieved successfully')
+        );
     }
 
-    public function update(Request $request, $id): JsonResponse
+    /**
+     * Update an existing supplier.
+     */
+    public function update(UpdateSupplierApiRequest $request, Supplier $supplier, SupplierService $service): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $this->authorize('update', $supplier);
 
-        $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:50',
-            'address' => 'nullable|string',
-            'tax_number' => 'nullable|string|max:50',
-            'status' => 'nullable|string|in:active,inactive',
-        ]);
+        $validated = $request->validated();
+        $service->updateSupplier($supplier, $validated);
 
-        $this->service->updateSupplier($supplier, $validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier updated successfully'),
-            'data' => new SupplierResource($supplier),
-            'errors' => []
-        ]);
+        return $this->success(
+            new SupplierResource($supplier->fresh()),
+            __('Supplier updated successfully')
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Delete a supplier.
+     */
+    public function destroy(Supplier $supplier, SupplierService $service): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
-        $this->service->deleteSupplier($supplier);
+        $this->authorize('delete', $supplier);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Supplier deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        $service->deleteSupplier($supplier);
+
+        return $this->success(
+            null,
+            __('Supplier deleted successfully')
+        );
     }
 }

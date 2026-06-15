@@ -3,95 +3,111 @@
 namespace Dev3bdulrahman\Purchases\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\HasApiResponse;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\StorePurchaseReturnApiRequest;
+use Dev3bdulrahman\Purchases\Http\Requests\Api\UpdatePurchaseReturnApiRequest;
 use Dev3bdulrahman\Purchases\Http\Resources\PurchaseReturnResource;
 use Dev3bdulrahman\Purchases\Services\PurchaseReturnService;
 use Dev3bdulrahman\Purchases\Models\PurchaseReturn;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PurchaseReturnApiController extends Controller
 {
-    protected PurchaseReturnService $service;
+    use HasApiResponse;
 
-    public function __construct(PurchaseReturnService $service)
+    /**
+     * List all purchase returns.
+     */
+    public function index(Request $request, PurchaseReturnService $service): JsonResponse
     {
-        $this->service = $service;
-    }
+        $this->authorize('viewAny', PurchaseReturn::class);
 
-    public function index(Request $request): JsonResponse
-    {
-        $perPage = (int)$request->get('per_page', 10);
-        $returns = $this->service->listReturns($request->all(), $perPage);
+        $perPage = (int) $request->get('per_page', 10);
+        $returns = $service->listReturns($request->all(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase returns retrieved successfully'),
-            'data' => PurchaseReturnResource::collection($returns->items()),
-            'meta' => [
+        return $this->success(
+            PurchaseReturnResource::collection($returns->items()),
+            __('Purchase returns retrieved successfully'),
+            200,
+            [
                 'current_page' => $returns->currentPage(),
                 'last_page' => $returns->lastPage(),
                 'per_page' => $returns->perPage(),
                 'total' => $returns->total(),
-            ],
-            'errors' => []
-        ]);
+            ]
+        );
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a new purchase return.
+     */
+    public function store(StorePurchaseReturnApiRequest $request, PurchaseReturnService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier_id' => 'required|exists:purchases_suppliers,id',
-            'supplier_invoice_id' => 'nullable|exists:purchases_invoices,id',
-            'return_number' => 'required|string|max:255',
-            'return_date' => 'required|date',
-            'status' => 'nullable|string|in:pending,approved,rejected,completed',
-            'reason' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-            'items.*.discount_amount' => 'nullable|numeric|min:0',
-        ]);
+        $this->authorize('create', PurchaseReturn::class);
 
+        $validated = $request->validated();
         $items = $validated['items'];
         unset($validated['items']);
 
         $validated['company_id'] = session('active_company_id') ?: auth()->user()->company_id;
-        $return = $this->service->createReturn($validated, $items);
+        $return = $service->createReturn($validated, $items);
         $return->load('items');
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase return created successfully'),
-            'data' => new PurchaseReturnResource($return),
-            'errors' => []
-        ], 201);
+        return $this->success(
+            new PurchaseReturnResource($return),
+            __('Purchase return created successfully'),
+            201
+        );
     }
 
-    public function show($id): JsonResponse
+    /**
+     * Show a single purchase return.
+     */
+    public function show(PurchaseReturn $purchaseReturn): JsonResponse
     {
-        $return = PurchaseReturn::with('items')->findOrFail($id);
+        $this->authorize('view', $purchaseReturn);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase return retrieved successfully'),
-            'data' => new PurchaseReturnResource($return),
-            'errors' => []
-        ]);
+        $purchaseReturn->load('items');
+
+        return $this->success(
+            new PurchaseReturnResource($purchaseReturn),
+            __('Purchase return retrieved successfully')
+        );
     }
 
-    public function destroy($id): JsonResponse
+    /**
+     * Update an existing purchase return.
+     */
+    public function update(UpdatePurchaseReturnApiRequest $request, PurchaseReturn $purchaseReturn, PurchaseReturnService $service): JsonResponse
     {
-        $return = PurchaseReturn::findOrFail($id);
-        $this->service->deleteReturn($return);
+        $this->authorize('update', $purchaseReturn);
 
-        return response()->json([
-            'success' => true,
-            'message' => __('Purchase return deleted successfully'),
-            'data' => null,
-            'errors' => []
-        ]);
+        $validated = $request->validated();
+        $items = $validated['items'] ?? [];
+        unset($validated['items']);
+
+        $service->updateReturn($purchaseReturn, $validated, $items);
+        $purchaseReturn->load('items');
+
+        return $this->success(
+            new PurchaseReturnResource($purchaseReturn),
+            __('Purchase return updated successfully')
+        );
+    }
+
+    /**
+     * Delete a purchase return.
+     */
+    public function destroy(PurchaseReturn $purchaseReturn, PurchaseReturnService $service): JsonResponse
+    {
+        $this->authorize('delete', $purchaseReturn);
+
+        $service->deleteReturn($purchaseReturn);
+
+        return $this->success(
+            null,
+            __('Purchase return deleted successfully')
+        );
     }
 }
