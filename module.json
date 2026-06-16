@@ -1,0 +1,11 @@
+{
+    "name": "Purchases",
+    "slug": "purchases",
+    "version": "1.0.0",
+    "description": "Purchasing & Supplier Management",
+    "description_ar": "المشتريات وإدارة الموردين",
+    "is_active": true,
+    "provider": "Dev3bdulrahman\\Purchases\\PurchasesServiceProvider",
+    "dependencies": [],
+    "order": 3
+}
