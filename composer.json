@@ -1,8 +1,8 @@
 {
   "name": "dev-3bdulrahman/purchases",
-  "description": "A Purchases module for Laravel ERP — purchase requests, orders, invoices, returns, suppliers & payments.",
+  "description": "A Purchases module for Laravel ERP \u2014 purchase requests, orders, invoices, returns, suppliers & payments.",
   "type": "library",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "license": "MIT",
   "authors": [
     {
