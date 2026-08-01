@@ -2,7 +2,7 @@
   "name": "dev-3bdulrahman/purchases",
   "description": "A Purchases module for Laravel ERP \u2014 purchase requests, orders, invoices, returns, suppliers & payments.",
   "type": "library",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "license": "MIT",
   "authors": [
     {

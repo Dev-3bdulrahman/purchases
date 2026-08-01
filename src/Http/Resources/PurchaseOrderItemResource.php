@@ -13,7 +13,7 @@ class PurchaseOrderItemResource extends JsonResource
             'id' => $this->id,
             'purchase_order_id' => $this->purchase_order_id,
             'product_id' => $this->product_id,
-            'product_name' => $this->product ? $this->product->name : null,
+            'product_name' => $this->product ? $this->product->translated_name : null,
             'product_variant_id' => $this->product_variant_id,
             'quantity' => $this->quantity,
             'unit_price' => $this->unit_price,
